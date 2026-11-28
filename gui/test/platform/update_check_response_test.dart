@@ -43,12 +43,33 @@ void main() {
     }
   });
 
+  test('only the matching download or handoff response confirms success', () {
+    const download = '{"schemaVersion":1,"ok":true,"code":"ok"}';
+    const handoff = '{"schemaVersion":1,"ok":true,"code":"handed_over"}';
+    expect(
+      () => requireUpdateOperationResponse(0, download, installing: false),
+      returnsNormally,
+    );
+    expect(
+      () => requireUpdateOperationResponse(0, handoff, installing: true),
+      returnsNormally,
+    );
+    expect(
+      () => requireUpdateOperationResponse(0, download, installing: true),
+      throwsA(isA<IntegrationFailure>()),
+    );
+    expect(
+      () => requireUpdateOperationResponse(0, handoff, installing: false),
+      throwsA(isA<IntegrationFailure>()),
+    );
+  });
+
   test('a maintenance engine change directs users to an offline installer', () {
     const output =
         '{"schemaVersion":1,"ok":false,'
         '"code":"maintenance_image_requires_reinstall"}';
     expect(
-      () => decodeUpdateOperationResponse(1, output, installing: true),
+      () => requireUpdateOperationResponse(1, output, installing: true),
       throwsA(
         isA<IntegrationFailure>().having(
           (failure) => failure.message,

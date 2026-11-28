@@ -1,10 +1,4 @@
-// Command build is the single reproducible Sidravia package builder.
-//
-// It uses the fixed Go 1.26.11 toolchain and shared project codecs. Distribution
-// mode builds target-bound Windows/Linux core tools and optional native GUI
-// archives/installers. Legacy release/field-validation modes build a Windows
-// amd64 CLI pair. Each mode writes SHA256SUMS.txt. The tool does not run Git,
-// derive versions, sign, tag, upload or publish a release.
+// Command build creates Sidravia distribution archives and Windows installers.
 package main
 
 import (
@@ -62,7 +56,6 @@ type config struct {
 	buildID      string
 	output       string
 	goBin        string
-	artifact     string
 	target       string
 	guiDirectory string
 	ifw          string
@@ -87,7 +80,6 @@ var knownValueFlags = map[string]bool{
 func parseFlags(args []string) (config, error) {
 	var c config
 	c.goBin = "go"
-	c.artifact = "release"
 	// --help and -h are accepted only as the sole argument; any other token
 	// alongside them is a usage error.
 	if len(args) == 1 && (args[0] == "--help" || args[0] == "-h") {
@@ -138,10 +130,9 @@ func parseFlags(args []string) (config, error) {
 		case "--go":
 			c.goBin = val
 		case "--artifact":
-			if val != "release" && val != "field-validation" && val != "distribution" {
-				return c, fmt.Errorf("flag %q must be release, field-validation or distribution", name)
+			if val != "distribution" {
+				return c, fmt.Errorf("flag %q must be distribution", name)
 			}
-			c.artifact = val
 		case "--target":
 			c.target = val
 		case "--gui-directory":
@@ -164,24 +155,20 @@ func parseFlags(args []string) (config, error) {
 	if c.output == "" {
 		return c, errors.New("missing required flag --output")
 	}
-	if c.compression != "" && (c.artifact != "distribution" || !strings.HasPrefix(c.target, "linux-") || (c.compression != "gzip" && c.compression != "xz")) {
+	if c.compression != "" && (!strings.HasPrefix(c.target, "linux-") || (c.compression != "gzip" && c.compression != "xz")) {
 		return c, errors.New("compression requires a Linux distribution and gzip or xz")
 	}
-	if c.artifact == "distribution" {
-		if c.target != "windows-amd64" && c.target != "linux-amd64" && c.target != "windows-arm64" && c.target != "linux-arm64" {
-			return c, errors.New("distribution requires --target windows-amd64, linux-amd64, windows-arm64 or linux-arm64")
-		}
-		if !strings.HasPrefix(c.target, "windows-") && c.ifw != "" {
-			return c, errors.New("installer requires a Windows target")
-		}
-		if c.ifw != "" && (c.guiDirectory == "" || !filepath.IsAbs(c.ifw)) {
-			return c, errors.New("Qt packaging requires an absolute toolchain directory and the native GUI payload")
-		}
-		if c.ifw != "" && !validQtCandidateVersion(c.version) {
-			return c, errors.New("Qt candidate packaging requires a numeric release or a version ending in alpha.N, beta.N, rc.N or dev.qt.N")
-		}
-	} else if c.target != "" || c.guiDirectory != "" || c.ifw != "" {
-		return c, errors.New("target, GUI and installer flags require --artifact distribution")
+	if c.target != "windows-amd64" && c.target != "linux-amd64" && c.target != "windows-arm64" && c.target != "linux-arm64" {
+		return c, errors.New("distribution requires --target windows-amd64, linux-amd64, windows-arm64 or linux-arm64")
+	}
+	if !strings.HasPrefix(c.target, "windows-") && c.ifw != "" {
+		return c, errors.New("installer requires a Windows target")
+	}
+	if c.ifw != "" && (c.guiDirectory == "" || !filepath.IsAbs(c.ifw)) {
+		return c, errors.New("Qt packaging requires an absolute toolchain directory and the native GUI payload")
+	}
+	if c.ifw != "" && !validQtCandidateVersion(c.version) {
+		return c, errors.New("Qt candidate packaging requires a numeric release or a version ending in alpha.N, beta.N, rc.N or dev.qt.N")
 	}
 	return c, nil
 }
@@ -197,26 +184,22 @@ Required flags:
   --version    canonical product version, e.g. 0.1.0-alpha.2 (no leading v)
   --build-id   stable build identifier, 1-64 chars, [0-9A-Za-z][0-9A-Za-z._-]*
   --output     output directory; must not exist, its parent must exist
+  --target     windows-amd64, linux-amd64, windows-arm64 or linux-arm64
 
 Optional flags:
   --go         go executable to use (default: go); must report go1.26.11
-  --artifact   release (default) or field-validation
-               distribution: Windows archive/optional installer or Linux archive
-  --target     distribution only: windows-amd64, linux-amd64, windows-arm64 or linux-arm64
+  --artifact   optional explicit distribution selection
   --compression  Linux distribution only: gzip (default) or xz; xz requires XZ Utils 5.8.3
   --gui-directory  optional fresh Flutter Release directory for the chosen target
   --ifw        optional absolute directory of the Qt installer toolchain
   --help       show this help and exit without building
 
-Distribution mode builds the target's core tools, optional native GUI payload,
+The builder creates the target's core tools, optional native GUI payload,
 and Windows installer when requested. With --ifw, portable/ contains the GUI
 archive, and qt/ contains the installer and unsigned update repositories.
 Archives include the selected version and build identifier.
 
-Legacy release/field-validation modes build the Windows amd64 CLI pair into a
-portable zip. Release contains install/uninstall scripts; field-validation adds
-the guided validation tools. Every mode writes SHA256SUMS.txt. The tool does not
-sign, upload or publish a release.
+Every build writes SHA256SUMS.txt. Signing and publication are separate.
 `)
 }
 
@@ -384,7 +367,7 @@ func outputFromArgv(argv []string) (string, error) {
 
 // verifyRepoInputs verifies the tool is running from the Sidravia repository
 // root by checking go.mod and the expected local inputs.
-func verifyRepoInputs(root, artifact string) error {
+func verifyRepoInputs(root string) error {
 	modBytes, err := os.ReadFile(filepath.Join(root, "go.mod"))
 	if err != nil {
 		return fmt.Errorf("read go.mod: %w", err)
@@ -398,25 +381,9 @@ func verifyRepoInputs(root, artifact string) error {
 	}
 	checks := []inputCheck{
 		{"LICENSE", false},
-		{"docs/guide.md", false},
-		{"scripts/install.ps1", false},
-		{"scripts/uninstall.ps1", false},
 		{"cmd/sidraviactl", true},
 		{"cmd/sidraviad", true},
-	}
-	if artifact == "distribution" {
-		checks = []inputCheck{
-			{"LICENSE", false},
-			{"cmd/sidraviactl", true},
-			{"cmd/sidraviad", true},
-			{"cmd/sidraviaupdater", true},
-		}
-	}
-	if artifact == "field-validation" {
-		checks = append(checks,
-			inputCheck{"scripts/field-test.ps1", false},
-			inputCheck{"tools/cli_smoke.ps1", false},
-		)
+		{"cmd/sidraviaupdater", true},
 	}
 	for _, c := range checks {
 		info, err := os.Stat(filepath.Join(root, c.path))
@@ -432,27 +399,7 @@ func verifyRepoInputs(root, artifact string) error {
 		}
 	}
 
-	// Release scripts ship byte-for-byte with a UTF-8 BOM so Windows PowerShell
-	// 5.1 reads their UTF-8 content correctly. Reject before building.
-	var releaseScripts []string
-	if artifact != "distribution" {
-		releaseScripts = []string{"scripts/install.ps1", "scripts/uninstall.ps1"}
-	}
-	for _, script := range releaseScripts {
-		b, err := os.ReadFile(filepath.Join(root, script))
-		if err != nil {
-			return fmt.Errorf("read %s: %w", script, err)
-		}
-		if !hasUTF8BOM(b) {
-			return fmt.Errorf("release script %s must start with a UTF-8 BOM", script)
-		}
-	}
 	return nil
-}
-
-// hasUTF8BOM reports whether b starts with a UTF-8 byte order mark.
-func hasUTF8BOM(b []byte) bool {
-	return bytes.HasPrefix(b, []byte{0xEF, 0xBB, 0xBF})
 }
 
 func moduleIsSidravia(b []byte) bool {
@@ -470,24 +417,22 @@ type buildFunc func(env []string, argv []string) ([]byte, error)
 
 // tool holds the configuration and injectable seams used by execute.
 type tool struct {
-	cfg              config
-	repoRoot         string
-	build            buildFunc
-	packageArtifacts func(repoRoot, staging, version, buildID, artifact string, profiles []archiveEntry, cliBytes, daemonBytes []byte) error
-	publish          func(staging, out string) error
-	runtimeVersion   func() string
-	probeGoVersion   func(goBin string) (string, error)
+	cfg            config
+	repoRoot       string
+	build          buildFunc
+	publish        func(staging, out string) error
+	runtimeVersion func() string
+	probeGoVersion func(goBin string) (string, error)
 }
 
 func newDefaultTool(cfg config, repoRoot string) *tool {
 	return &tool{
-		cfg:              cfg,
-		repoRoot:         repoRoot,
-		build:            realBuildFunc(repoRoot),
-		packageArtifacts: writeArtifacts,
-		publish:          publishDirectory,
-		runtimeVersion:   func() string { return runtime.Version() },
-		probeGoVersion:   realProbeGoVersion,
+		cfg:            cfg,
+		repoRoot:       repoRoot,
+		build:          realBuildFunc(repoRoot),
+		publish:        publishDirectory,
+		runtimeVersion: func() string { return runtime.Version() },
+		probeGoVersion: realProbeGoVersion,
 	}
 }
 
@@ -504,10 +449,7 @@ func (t *tool) execute(stdout, stderr io.Writer) error {
 	if reported != requiredGoVersion {
 		return fmt.Errorf("go toolchain reported %q, need %q", reported, requiredGoVersion)
 	}
-	if t.cfg.artifact == "distribution" {
-		return t.executeDistribution(stdout, stderr)
-	}
-	return t.executeLegacyArchive(stdout, stderr)
+	return t.executeDistribution(stdout, stderr)
 }
 
 // realBuildFunc returns a buildFunc that runs the go subprocess and reads the

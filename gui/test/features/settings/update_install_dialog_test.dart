@@ -25,7 +25,7 @@ class _Checker implements PackageUpdateChecker {
   @override
   bool get usesSystemPackageManager => false;
 
-  final install = Completer<UpdateInstallResult>();
+  final install = Completer<void>();
   final installedCandidates = <String>[];
 
   @override
@@ -37,7 +37,7 @@ class _Checker implements PackageUpdateChecker {
   );
 
   @override
-  Future<UpdateInstallResult> installUpdate(String candidateId) {
+  Future<void> installUpdate(String candidateId) {
     installedCandidates.add(candidateId);
     return install.future;
   }
@@ -137,7 +137,7 @@ void main() {
             const IntegrationFailure('候选版本已变化，请重新检查更新。'),
           );
         } else {
-          checker.install.complete(UpdateInstallResult.handedOver);
+          checker.install.complete();
         }
         await tester.pumpAndSettle();
         expect(

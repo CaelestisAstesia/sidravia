@@ -137,7 +137,7 @@ jobs:
         shell: pwsh
         run: |
           $zip = 'qt-toolkit-source/qt-ifw-arm64-target-x64-test-kit.zip'
-          $expected = 'e5e655895b8d5d2e99d03d9e880f38db0198902b94ea19ab6c5a1cc8e4b3e2b4'
+          $expected = 'd49a7389d25a20ee6c68ae7276a34b78f093566d318132b1da30c71d65255802'
           if ((Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash -ine $expected) { throw 'Qt test toolkit digest mismatch.' }
           Expand-Archive -LiteralPath $zip -DestinationPath qt-toolkit
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8

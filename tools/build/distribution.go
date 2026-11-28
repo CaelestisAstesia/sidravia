@@ -14,7 +14,7 @@ import (
 )
 
 func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
-	if err := verifyRepoInputs(t.repoRoot, "distribution"); err != nil {
+	if err := verifyRepoInputs(t.repoRoot); err != nil {
 		return err
 	}
 	if t.cfg.ifw != "" && runtime.GOOS != "windows" {
@@ -22,7 +22,7 @@ func (t *tool) executeDistribution(stdout, stderr io.Writer) error {
 	}
 	profiles, err := loadOfficialProfileEntries(t.repoRoot)
 	if err != nil {
-		return err
+		return fmt.Errorf("load official institution profiles: %w", err)
 	}
 	var entries []archiveEntry
 	for _, name := range []string{"LICENSE", "THIRD-PARTY-NOTICES.txt"} {

@@ -9,22 +9,16 @@ import (
 
 func TestParseFlags(t *testing.T) {
 	t.Run("valid required", func(t *testing.T) {
-		c, err := parseFlags([]string{"--version", "1.2.3", "--build-id", "abc", "--output", "out"})
+		c, err := parseFlags([]string{"--version", "1.2.3", "--build-id", "abc", "--output", "out", "--target", "linux-amd64"})
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
-		if c.version != "1.2.3" || c.buildID != "abc" || c.output != "out" || c.goBin != "go" || c.artifact != "release" || c.help {
+		if c.version != "1.2.3" || c.buildID != "abc" || c.output != "out" || c.goBin != "go" || c.target != "linux-amd64" || c.help {
 			t.Fatalf("bad config: %+v", c)
 		}
 	})
-	t.Run("field validation artifact", func(t *testing.T) {
-		c, err := parseFlags([]string{"--version=1.0.0", "--build-id=x", "--output=o", "--artifact=field-validation"})
-		if err != nil || c.artifact != "field-validation" {
-			t.Fatalf("artifact=%q err=%v", c.artifact, err)
-		}
-	})
 	t.Run("equal form and custom go", func(t *testing.T) {
-		c, err := parseFlags([]string{"--version=1.0.0", "--build-id=x", "--output=o", "--go=/p/go"})
+		c, err := parseFlags([]string{"--version=1.0.0", "--build-id=x", "--output=o", "--target=windows-amd64", "--go=/p/go"})
 		if err != nil {
 			t.Fatalf("err: %v", err)
 		}
@@ -63,6 +57,8 @@ func TestParseFlags(t *testing.T) {
 		"unknown flag":     {"--foo", "1"},
 		"positional":       {"--version", "1.0.0", "--build-id", "x", "--output", "o", "extra"},
 		"missing value":    {"--version"},
+		"missing target":   {"--version", "1.0.0", "--build-id", "x", "--output", "o"},
+		"retired artifact": {"--version", "1.0.0", "--build-id", "x", "--output", "o", "--target", "windows-amd64", "--artifact", "field-validation"},
 		"invalid artifact": {"--version", "1.0.0", "--build-id", "x", "--output", "o", "--artifact", "installed"},
 		"empty artifact":   {"--version", "1.0.0", "--build-id", "x", "--output", "o", "--artifact="},
 	} {
@@ -126,7 +122,7 @@ func TestHelpPrintsAndExits(t *testing.T) {
 }
 
 func TestRunRejectsBadFlags(t *testing.T) {
-	code := run([]string{"--version", "v0.1.0", "--build-id", "x", "--output", "o"}, io.Discard, io.Discard)
+	code := run([]string{"--version", "v0.1.0", "--build-id", "x", "--output", "o", "--target", "linux-amd64"}, io.Discard, io.Discard)
 	if code == 0 {
 		t.Fatal("expected non-zero exit for invalid version")
 	}

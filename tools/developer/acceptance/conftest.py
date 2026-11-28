@@ -17,7 +17,6 @@ def pytest_addoption(parser):
     group = parser.getgroup("distribution")
     group.addoption("--core-directory", type=Path, help="Built Core distribution")
     group.addoption("--gui-directory", type=Path, help="Built GUI distribution")
-    group.addoption("--qt-windows-gui", action="store_true", help="Verify the Windows GUI ZIP from a Qt build")
     group.addoption("--gui-input", type=Path, help="GUI runtime used by the producer")
     group.addoption("--target", help="Producer target, e.g. linux-amd64")
     group.addoption("--product-version", help="Product version passed to the producer")
@@ -41,8 +40,6 @@ def pytest_generate_tests(metafunc):
     gui_input = get("--gui-input")
     if (gui is None) != (gui_input is None):
         raise pytest.UsageError("--gui-directory and --gui-input must be supplied together")
-    if get("--qt-windows-gui") and (gui is None or get("--target") not in ("windows-amd64", "windows-arm64")):
-        raise pytest.UsageError("--qt-windows-gui requires a Windows GUI distribution")
     cases = []
     if core is not None:
         cases.append(Distribution("core", core))

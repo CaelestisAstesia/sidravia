@@ -17,10 +17,11 @@ $headers = ($CompressionAndSodiumHeaders.Split(';') | ForEach-Object { (Resolve-
 $libraries = ($CompressionAndSodiumLibraries.Split(';') | ForEach-Object { (Resolve-Path -LiteralPath $_).Path }) -join ';'
 if (Test-Path -LiteralPath $out) { throw 'Output must be a new build directory.' }
 # Source archives from the verified upstream 4.11.0 Git tree.
+$sourceLock = Get-Content -Raw -LiteralPath "$PSScriptRoot/source-lock.json" | ConvertFrom-Json
 $expected = if ([IO.Path]::GetExtension($archive) -ieq '.tar') {
-    'f1a21e3e639a5249708e4c954297b25e426effbe461b63608c91f7e86a2396df'
+    $sourceLock.tarSHA256
 } else {
-    'aefda9ad1079a0c25163e16d312cef8117c994c31d76a8bda7ede53d2b4db271'
+    $sourceLock.gzipSHA256
 }
 if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $expected) {
     throw 'Unexpected IFW source archive digest.'
@@ -31,12 +32,14 @@ if ($LASTEXITCODE -ne 0) { throw 'Unable to extract the verified IFW source.' }
 $source = Join-Path $out 'ifw'
 $gate = Join-Path $out 'gate'
 $null = New-Item -ItemType Directory -Path $gate
-Copy-Item -LiteralPath "$PSScriptRoot\publisher-gate.pri","$PSScriptRoot\productkeycheck.cpp" -Destination $gate
+$gateSources = 'publisher-gate.pri', 'deployment.h', 'productkeycheck.cpp',
+    'maintenancehandoff.cpp', 'repositoryverification.cpp', 'uninstallintegration.cpp'
+Copy-Item -LiteralPath ($gateSources | ForEach-Object { Join-Path $PSScriptRoot $_ }) -Destination $gate
 Set-Content -LiteralPath (Join-Path $gate 'publisherkey.h') -Encoding ASCII -Value @(
     ('#define SIDRAVIA_PUBLISHER_PUBLIC_KEY "' + $PublisherPublicKey.ToLowerInvariant() + '"'),
     ('#define SIDRAVIA_IFW_TARGET "' + $PayloadTarget + '"')
 )
-foreach ($name in 'use-pinned-archives.patch', 'use-pinned-metadata.patch', 'preserve-maintenance-image.patch', 'report-maintenance-outcome.patch', 'remove-user-integration.patch') {
+foreach ($name in 'use-pinned-archives.patch', 'use-pinned-metadata.patch', 'preserve-maintenance-image.patch', 'report-maintenance-outcome.patch', 'remove-user-integration.patch', 'refuse-legacy-installation.patch') {
     & git -C $source apply (Join-Path $PSScriptRoot $name)
     if ($LASTEXITCODE -ne 0) { throw "Unable to apply $name to the pinned IFW source." }
 }

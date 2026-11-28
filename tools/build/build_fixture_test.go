@@ -18,16 +18,6 @@ func writeTestFile(t *testing.T, path, content string) {
 	}
 }
 
-// These representative scripts prove Release/validation content separation.
-// Release scripts carry a UTF-8 BOM; field-test/cli-smoke stay plain ASCII.
-const (
-	testFieldTestScript = "# field-test.ps1\n"
-	testCLISmokeScript  = "# cli-smoke.ps1\n"
-	testInstallScript   = "\xEF\xBB\xBF# install.ps1\n"
-	testUninstallScript = "\xEF\xBB\xBF# uninstall.ps1\n"
-	testGettingStarted  = "# Sidravia package guide\n[More commands](advance.md)\n"
-)
-
 // testProfileJSON is a representative non-secret institution Profile the fake
 // repo ships. The build tool embeds it byte-for-byte; TestZipManifest asserts
 // both zips carry it at their documented paths.
@@ -70,12 +60,7 @@ func setupRepoRoot(t *testing.T) string {
 	writeTestFile(t, filepath.Join(root, "README.md"), "# Sidravia readme\n")
 	writeTestFile(t, filepath.Join(root, "LICENSE"), "LICENSE TEXT\n")
 	writeTestFile(t, filepath.Join(root, "THIRD-PARTY-NOTICES.txt"), "third-party notices\n")
-	writeTestFile(t, filepath.Join(root, "docs", "guide.md"), testGettingStarted)
 	writeTestFile(t, filepath.Join(root, "internal", "connection", "profile", "data", "jlu.json"), testProfileJSON)
-	writeTestFile(t, filepath.Join(root, "scripts", "field-test.ps1"), testFieldTestScript)
-	writeTestFile(t, filepath.Join(root, "scripts", "install.ps1"), testInstallScript)
-	writeTestFile(t, filepath.Join(root, "scripts", "uninstall.ps1"), testUninstallScript)
-	writeTestFile(t, filepath.Join(root, "tools", "cli_smoke.ps1"), testCLISmokeScript)
 	if err := os.MkdirAll(filepath.Join(root, "cmd", "sidraviactl"), 0o755); err != nil {
 		t.Fatalf("mkdir cmd/sidraviactl: %v", err)
 	}
@@ -103,34 +88,14 @@ func (f *fakeBuilder) build(env []string, argv []string) ([]byte, error) {
 }
 
 func newFakeTool(cfg config, repoRoot string, fb *fakeBuilder) *tool {
-	if cfg.artifact == "" {
-		cfg.artifact = "release"
-	}
 	return &tool{
-		cfg:              cfg,
-		repoRoot:         repoRoot,
-		build:            fb.build,
-		packageArtifacts: writeArtifacts,
-		publish:          publishDirectory,
-		runtimeVersion:   func() string { return requiredGoVersion },
-		probeGoVersion:   func(string) (string, error) { return requiredGoVersion, nil },
+		cfg:            cfg,
+		repoRoot:       repoRoot,
+		build:          fb.build,
+		publish:        publishDirectory,
+		runtimeVersion: func() string { return requiredGoVersion },
+		probeGoVersion: func(string) (string, error) { return requiredGoVersion, nil },
 	}
-}
-
-func buildOutput(t *testing.T, version, buildID string) (string, *fakeBuilder) {
-	return buildArtifactOutput(t, version, buildID, "release")
-}
-
-func buildArtifactOutput(t *testing.T, version, buildID, artifact string) (string, *fakeBuilder) {
-	t.Helper()
-	root := setupRepoRoot(t)
-	fb := &fakeBuilder{}
-	out := filepath.Join(t.TempDir(), "dist")
-	cfg := config{version: version, buildID: buildID, output: out, goBin: "go", artifact: artifact}
-	if err := newFakeTool(cfg, root, fb).execute(io.Discard, io.Discard); err != nil {
-		t.Fatalf("execute: %v", err)
-	}
-	return out, fb
 }
 
 func readZipContents(t *testing.T, path string) map[string][]byte {

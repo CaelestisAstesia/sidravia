@@ -164,7 +164,7 @@ class LinuxInstallationManager
   }
 
   @override
-  Future<UpdateInstallResult> installUpdate(String candidateId) {
+  Future<void> installUpdate(String candidateId) {
     _checkOpen();
     throw IntegrationFailure(
       usesSystemPackageManager ? '请使用系统包管理器更新。' : '便携版请从发行页下载新版，并解包到新目录。',

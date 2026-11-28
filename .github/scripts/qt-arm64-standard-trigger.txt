@@ -1,1 +1,2 @@
 Rebuild the native Windows desktop after retiring Inno startup admission and verify the Qt-only product.
+16d3bb4 guarded Qt migration regression

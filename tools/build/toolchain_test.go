@@ -17,7 +17,7 @@ func TestRuntimeVersionMismatchNoMutation(t *testing.T) {
 	outParent := t.TempDir()
 	out := filepath.Join(outParent, "dist")
 	fb := &fakeBuilder{}
-	tt := newFakeTool(config{version: "0.1.0", buildID: "abc", output: out, goBin: "go"}, root, fb)
+	tt := newFakeTool(config{version: "0.1.0", buildID: "abc", output: out, goBin: "go", target: "linux-amd64"}, root, fb)
 	tt.runtimeVersion = func() string { return "go1.25.0" }
 	err := tt.execute(io.Discard, io.Discard)
 	if err == nil || !strings.Contains(err.Error(), requiredGoVersion) {
@@ -34,7 +34,7 @@ func TestSubprocessVersionMismatchNoMutation(t *testing.T) {
 	outParent := t.TempDir()
 	out := filepath.Join(outParent, "dist")
 	fb := &fakeBuilder{}
-	tt := newFakeTool(config{version: "0.1.0", buildID: "abc", output: out, goBin: "go"}, root, fb)
+	tt := newFakeTool(config{version: "0.1.0", buildID: "abc", output: out, goBin: "go", target: "linux-amd64"}, root, fb)
 	tt.probeGoVersion = func(string) (string, error) { return "go1.25.0", nil }
 	if err := tt.execute(io.Discard, io.Discard); err == nil {
 		t.Fatal("expected error")

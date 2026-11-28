@@ -4,7 +4,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import '../integration_failure.dart';
-import 'package_update_checker.dart';
 import 'update_check_response.dart';
 
 /// Owns one update operation for the application, including its download.
@@ -30,7 +29,7 @@ class UpdateCheckProcess {
     return (code: code!, output: output);
   });
 
-  Future<UpdateInstallResult> install({
+  Future<void> install({
     required String executable,
     required String downloader,
     required String candidateId,
@@ -47,7 +46,7 @@ class UpdateCheckProcess {
       '下载更新',
       keepRunning: true,
     );
-    decodeUpdateOperationResponse(
+    requireUpdateOperationResponse(
       downloaded.code,
       downloaded.output,
       installing: false,
@@ -67,7 +66,7 @@ class UpdateCheckProcess {
       '安装更新',
       keepRunning: true,
     );
-    return decodeUpdateOperationResponse(
+    requireUpdateOperationResponse(
       applied.code,
       applied.output,
       installing: true,

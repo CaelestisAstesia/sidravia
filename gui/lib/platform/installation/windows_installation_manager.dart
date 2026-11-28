@@ -47,7 +47,7 @@ class WindowsInstallationManager
       File(Platform.resolvedExecutable).parent.uri.resolve(name).toFilePath();
 
   @override
-  Future<UpdateInstallResult> installUpdate(String candidateId) {
+  Future<void> installUpdate(String candidateId) {
     if (_closed) throw const IntegrationFailure('更新操作已取消。');
     return _updateCheck.install(
       executable: _updateExecutable('sidraviactl.exe'),

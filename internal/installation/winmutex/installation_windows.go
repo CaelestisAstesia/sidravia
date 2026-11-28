@@ -1,6 +1,6 @@
 //go:build windows
 
-// Current-user exclusion is shared by Inno, portable publication and startup.
+// Current-user exclusion is shared by Qt maintenance and application startup.
 package winmutex
 
 import (

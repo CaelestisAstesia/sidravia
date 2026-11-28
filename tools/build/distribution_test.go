@@ -111,7 +111,7 @@ func verifyNoticeText(t *testing.T, identity, dir, name, section string) {
 
 func TestDistributionReportsPublishedOutputWhenChecksumSummaryFails(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "dist")
-	cfg := config{version: "0.3.0-alpha.1", buildID: "test", goBin: "go", artifact: "distribution", target: "linux-amd64", output: out}
+	cfg := config{version: "0.3.0-alpha.1", buildID: "test", goBin: "go", target: "linux-amd64", output: out}
 	err := newFakeTool(cfg, setupRepoRoot(t), &fakeBuilder{}).execute(closedOutput{}, io.Discard)
 	if !errors.Is(err, io.ErrClosedPipe) || !strings.Contains(err.Error(), "distribution published at "+out) {
 		t.Fatalf("expected error identifying the published distribution, got %v", err)
@@ -123,7 +123,7 @@ func TestDistributionReportsPublishedOutputWhenChecksumSummaryFails(t *testing.T
 
 func TestDistributionPreservesAnEmptyDestinationCreatedDuringBuild(t *testing.T) {
 	out := filepath.Join(t.TempDir(), "dist")
-	cfg := config{version: "0.3.0-alpha.1", buildID: "test", goBin: "go", artifact: "distribution", target: "linux-amd64", output: out}
+	cfg := config{version: "0.3.0-alpha.1", buildID: "test", goBin: "go", target: "linux-amd64", output: out}
 	distribution := newFakeTool(cfg, setupRepoRoot(t), &fakeBuilder{})
 	distribution.publish = func(stage, destination string) error {
 		if err := os.Mkdir(destination, 0o755); err != nil {
@@ -148,7 +148,7 @@ func TestDistributionFlags(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, tail := range [][]string{{"--target", "windows-amd64"}, {"--artifact", "distribution"}, {"--artifact", "distribution", "--target", "linux-arm64", "--ifw", "x"}} {
+	for _, tail := range [][]string{{"--target", "unsupported"}, {"--artifact", "distribution"}, {"--artifact", "distribution", "--target", "linux-arm64", "--ifw", "x"}} {
 		if _, err := parseFlags(append(append([]string(nil), base...), tail...)); err == nil {
 			t.Fatal("accepted invalid target combination")
 		}
@@ -161,7 +161,7 @@ func TestDistributionContents(t *testing.T) {
 			root := setupRepoRoot(t)
 			fb := &fakeBuilder{}
 			out := filepath.Join(t.TempDir(), "dist")
-			cfg := config{version: "0.3.0-alpha.1", buildID: "test", goBin: "go", artifact: "distribution", target: target, output: out}
+			cfg := config{version: "0.3.0-alpha.1", buildID: "test", goBin: "go", target: target, output: out}
 			if err := newFakeTool(cfg, root, fb).execute(io.Discard, io.Discard); err != nil {
 				t.Fatal(err)
 			}
@@ -333,7 +333,7 @@ func TestDistributionDoesNotDependOnLegacyWindowsScripts(t *testing.T) {
 		}
 	}
 	fb := &fakeBuilder{}
-	cfg := config{version: "0.3.0-alpha.1", buildID: "test", goBin: "go", artifact: "distribution", target: "linux-amd64", output: filepath.Join(t.TempDir(), "out")}
+	cfg := config{version: "0.3.0-alpha.1", buildID: "test", goBin: "go", target: "linux-amd64", output: filepath.Join(t.TempDir(), "out")}
 	if err := newFakeTool(cfg, root, fb).execute(io.Discard, io.Discard); err != nil {
 		t.Fatal(err)
 	}
