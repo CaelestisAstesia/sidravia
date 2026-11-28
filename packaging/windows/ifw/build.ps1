@@ -32,12 +32,14 @@ if ($LASTEXITCODE -ne 0) { throw 'Unable to extract the verified IFW source.' }
 $source = Join-Path $out 'ifw'
 $gate = Join-Path $out 'gate'
 $null = New-Item -ItemType Directory -Path $gate
-Copy-Item -LiteralPath "$PSScriptRoot\publisher-gate.pri","$PSScriptRoot\productkeycheck.cpp" -Destination $gate
+$gateSources = 'publisher-gate.pri', 'deployment.h', 'productkeycheck.cpp',
+    'maintenancehandoff.cpp', 'repositoryverification.cpp', 'uninstallintegration.cpp'
+Copy-Item -LiteralPath ($gateSources | ForEach-Object { Join-Path $PSScriptRoot $_ }) -Destination $gate
 Set-Content -LiteralPath (Join-Path $gate 'publisherkey.h') -Encoding ASCII -Value @(
     ('#define SIDRAVIA_PUBLISHER_PUBLIC_KEY "' + $PublisherPublicKey.ToLowerInvariant() + '"'),
     ('#define SIDRAVIA_IFW_TARGET "' + $PayloadTarget + '"')
 )
-foreach ($name in 'use-pinned-archives.patch', 'use-pinned-metadata.patch', 'preserve-maintenance-image.patch', 'report-maintenance-outcome.patch', 'remove-user-integration.patch') {
+foreach ($name in 'use-pinned-archives.patch', 'use-pinned-metadata.patch', 'preserve-maintenance-image.patch', 'report-maintenance-outcome.patch', 'remove-user-integration.patch', 'refuse-legacy-installation.patch') {
     & git -C $source apply (Join-Path $PSScriptRoot $name)
     if ($LASTEXITCODE -ne 0) { throw "Unable to apply $name to the pinned IFW source." }
 }

@@ -34,7 +34,7 @@ class _UpdateManager extends FakeManager implements PackageUpdateChecker {
   }
 
   @override
-  Future<UpdateInstallResult> installUpdate(String candidateId) async =>
+  Future<void> installUpdate(String candidateId) async =>
       throw StateError('system package must not install through the updater');
 
   @override

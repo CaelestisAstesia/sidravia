@@ -345,6 +345,35 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
         shutil.rmtree(namespace)
 
 
+def test_windows_qt_refuses_legacy_install_and_keeps_user_files(qt_release, tmp_path):
+    target = tmp_path / "legacy"
+    target.mkdir()
+    saved = target / "user-file.txt"
+    saved.write_bytes(b"user-owned")
+    legacy = ("sidraviactl.exe", "sidraviad.exe", "unins000.exe")
+    for file in legacy:
+        (target / file).write_bytes(b"legacy marker")
+    install = ["--root", target, *OPTIONS, "--auto-answer", "OverwriteTargetDirectory=Yes",
+               "--no-default-installations", "install", "org.sidravia.core"]
+    maintenance = target / "sidravia-maintenance.exe"
+    try:
+        result, log = invoke(tmp_path, "refuse-legacy-install", qt_release["setup"], install)
+        message = log.read_text(encoding="utf-8", errors="replace")
+        assert result != 0 and "Uninstall the earlier Sidravia version" in message, message
+        assert not maintenance.exists()
+        for file in legacy:
+            assert (target / file).read_bytes() == b"legacy marker"
+
+        for file in legacy:
+            (target / file).unlink()
+        require_success(invoke(tmp_path, "install-after-legacy-removal", qt_release["setup"], install))
+        assert saved.read_bytes() == b"user-owned"
+    finally:
+        if maintenance.is_file():
+            purge(tmp_path, "cleanup-after-legacy-install-test", maintenance)
+    assert saved.read_bytes() == b"user-owned"
+
+
 def test_windows_qt_can_remove_an_install_with_a_missing_manager(qt_release, tmp_path):
     setup = qt_release["setup"]
     install_core = [*OPTIONS, "--no-default-installations", "install", "org.sidravia.core"]

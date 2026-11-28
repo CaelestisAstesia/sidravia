@@ -604,7 +604,7 @@ python3 tools/developer/dev.py report /absolute/path/to/vm-run --native linux-rp
 
 `--kind` selects `stage` (default), `linux-desktop` (including business/portable
 fixtures), `linux-announcement`, `linux-rpm` (GUI/core), or `windows-field`
-(`offline_acceptance.ps1`, for historical Inno packages only). Native directories resolve to `result.json`; Windows
+(archived Inno receipts). Native directories resolve to `result.json`; Windows
 snapshots use an explicit file. `--native KIND=PATH` is repeatable and attaches
 only explicitly selected receipts. Unknown kinds, malformed receipts, duplicate
 inputs and native `--stage` filtering fail rather than guessing a schema.
@@ -1016,6 +1016,27 @@ reference. Use a controlled signing environment to combine the two lanes into
 During migration, uninstall the old Inno version while keeping user data
 before running Qt Setup. The default x64 installation directory was also used
 by Inno. Confirm removal of the old installation before accepting that target.
+
+## Campus field acceptance
+
+Use the exact Windows Qt or portable candidate in an authorized test session.
+Record the artifact SHA-256, the build ID, the architecture, and the installed
+component profile. Start with the candidate's own GUI or CTL.
+
+- Confirm one-time authentication, the selected network binding, successful
+  keepalives, disconnect, and session removal. Use the existing CTL
+  [authentication commands](../../docs/advance.md) for a Core-only test.
+- If the test session is authorized to save credentials, check automatic
+  authentication after restarting the background process with a protected
+  test configuration.
+- Where the environment permits it, check continuity across a Wi-Fi hotspot
+  change, and disconnect and reconnect the campus interface to check recovery.
+- Record which checks ran and collect `sidraviactl diagnostics export` when
+  needed. Review exported information before sharing. Use the application's
+  status and logs to distinguish a failed check from an unavailable network.
+
+The old interactive field harness belonged to the historical CLI archive.
+The Qt native suite covers installation and updates using isolated data.
 
 ## Windows Qt release acceptance
 

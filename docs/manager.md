@@ -4,7 +4,7 @@
 
 日常连接与配置使用 GUI 或 [CTL](advance.md)；普通安装版卸载从 Windows 应用列表进行。仅在需要命令行维护、排查系统集成时，使用本页命令。
 
-本文描述 `0.5.0-alpha.2` 源码的六项 MGR 操作。旧版遗留的卸载/清理命令已退役，相关职责由 Inno 安装器承担。预发布版本可能调整命令及返回结构，请结合所用版本核对。Linux 不提供 MGR；其 GUI 使用独立的平台集成实现，见 [Linux 便携版](linux-portable.md)。非 Windows 的 MGR 构建执行维护操作时返回 `unsupported`。
+本文描述当前源码的六项 MGR 操作。Linux 的 GUI 使用独立的平台集成实现，见 [Linux 便携版](linux-portable.md)。非 Windows 的 MGR 构建执行维护操作时返回 `unsupported`。
 
 ## 调用范围与参数规则
 
@@ -76,15 +76,11 @@ PATH 写入保留其他条目和原有字符串类型，目录匹配忽略大小
 
 MGR 管理计划任务根目录中的 `SidraviaDaemon`，按当前用户登录触发、使用普通用户权限。GUI 模式执行 `Sidravia.exe`，窗口可见性按 GUI 的启动偏好决定。旧的托盘启动任务仍可识别，重新选择 GUI 自启会按当前方式登记。后台模式执行 `sidraviactl.exe daemon start --log-level debug`。只有保存配置启用了自动登录，后台启动后才会按该配置自动认证。
 
-已有同名任务若无法确认属于当前用户、本目录及预期动作，会显示 `conflict`。查询 `status` 可以成功返回这一冲突状态；设置、禁用和安装器卸载检查会拒绝冲突。不要靠覆盖或删除未知任务来消除提示。移动便携目录前，应从旧目录正常撤销自启和 PATH，移动后再从新目录设置。
+已有同名任务若无法确认属于当前用户、本目录及预期动作，会显示 `conflict`。查询 `status` 会返回这一冲突状态。MGR 会拒绝修改有冲突的任务，Qt 卸载会保留该任务。不要靠覆盖或删除未知任务来消除提示。移动便携目录前，应从旧目录正常撤销自启和 PATH，移动后再从新目录设置。
 
-## 安装、恢复与卸载
+## 安装与卸载
 
-这些流程由 Inno 安装器负责，详见[使用指南](guide.md#更新移动与卸载)。MGR 只按安装器要求逐项处理自启和 PATH，不能把两个独立操作当成事务；任何一步失败后，先查询实际状态。
-
-安装后系统集成失败不会撤销已安装程序。错误页说明已完成及未完成项；重跑后请在安装选项页重新确认本次目标，默认值按当前实际状态显示，不自动重试旧选择，也不保存操作日志。静默运行必须通过 `/TASKS` 或含 Tasks 的 INF 明确自启和 PATH 目标。
-
-完整清除需要正常退出当前用户全部产品实例。自启/PATH 撤销或额外清理失败会保留程序和卸载入口，部分数据可能已删除；请按提示重试。不得通过手工清空整个安装目录、AppData 父目录或删除未知计划任务来绕过失败。
+Qt 负责程序文件的安装、更新及卸载。普通更新保留自启和 PATH 设置。卸载时，Qt 调用 MGR 撤销该安装拥有的登录任务和 PATH。遇到冲突时会保留其他安装或用户拥有的任务，未完成的操作可通过 `status` 核对。
 
 ## JSON 输出与退出码
 
@@ -153,6 +149,6 @@ CTL `integration ...` 也输出相同的公开结果字段，但其失败退出�
 
 ## 实现与验收边界
 
-入口见 [MGR 命令解析](../cmd/sidraviamgr/main.go)、[结果结构与 PATH](../internal/installation/shellintegration/path.go)、[Windows 操作分派](../internal/installation/shellintegration/platform_windows.go)、[计划任务规则](../internal/installation/shellintegration/task.ps1)、[Inno 安装与清理](../packaging/windows/sidravia.iss)。
+入口见 [MGR 命令解析](../cmd/sidraviamgr/main.go)、[结果结构与 PATH](../internal/installation/shellintegration/path.go)、[Windows 操作分派](../internal/installation/shellintegration/platform_windows.go)、[计划任务规则](../internal/installation/shellintegration/task.ps1)、[Qt 安装与卸载集成](../packaging/windows/ifw)。
 
 返回：[CTL 高级使用](advance.md) · [使用指南](guide.md) · [数据与隐私](privacy.md)

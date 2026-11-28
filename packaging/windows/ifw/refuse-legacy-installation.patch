@@ -1,0 +1,19 @@
+--- a/src/libs/installer/packagemanagercore_p.cpp
++++ b/src/libs/installer/packagemanagercore_p.cpp
+@@ -1868,6 +1868,16 @@
+         if (target.isEmpty())
+             throw Error(tr("Variable 'TargetDir' not set."));
+ 
++#ifdef Q_OS_WIN
++        const QDir directory(target);
++        if (directory.exists(QStringLiteral("sidraviactl.exe"))
++            && directory.exists(QStringLiteral("sidraviad.exe"))
++            && !directory.entryList({QStringLiteral("unins[0-9][0-9][0-9].exe")},
++                                    QDir::Files | QDir::Hidden | QDir::System).isEmpty()) {
++            throw Error(tr("Uninstall the earlier Sidravia version and keep your data before installing here."));
++        }
++#endif
++
+         if (!QDir(target).exists()) {
+             const QString &pathToTarget = target.mid(0, target.lastIndexOf(QLatin1Char('/')));
+             if (!QDir(pathToTarget).exists()) {

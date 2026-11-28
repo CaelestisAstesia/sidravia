@@ -91,14 +91,11 @@ class _UpdateSettingsState extends State<UpdateSettings> {
   Future<void> _install(String candidateId) async {
     setState(() => _installing = true);
     try {
-      final result = await widget.checker.installUpdate(candidateId);
+      await widget.checker.installUpdate(candidateId);
       if (!mounted) return;
       setState(() {
         _result = null;
-        _status = switch (result) {
-          UpdateInstallResult.installed => '更新已安装',
-          UpdateInstallResult.handedOver => '更新器已接管，请等待更新完成',
-        };
+        _status = '更新器已接管，请等待更新完成';
       });
     } finally {
       if (mounted) setState(() => _installing = false);

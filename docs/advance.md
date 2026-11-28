@@ -374,13 +374,12 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 | `update status` | Windows 安装版查询缓存及安装执行状态 |
 | `update download --candidate ID` | Windows 安装版在程序运行时下载并校验指定候选 |
 | `update apply --candidate ID --confirm` | Windows 安装版确认应用已准备的更新 |
-| `update recover --operation ID --confirm` | Windows 安装版核验指定的中断更新 |
 
 可在检查时用 `--channel stable|preview` 选择通道。Windows 安装版检查、下载和应用使用同一通道，候选编号取自检查结果。包型默认按当前布局选择。
 
 ### Windows 安装版
 
-程序内固定了发布者公钥。应用更新时会核验当前版本和目标版本的签名、文件清单及下载包。旧版缺少签名证明时，按发行说明手动升级到可信版本。
+应用从 GitHub 检查当前组件组合的新版，并用程序内的发布者公钥核验目标仓库。更新前还会核验当前的 Qt 维护工具。旧版迁移和离线修复见[使用指南](guide.md#更新移动与卸载)。
 
 先运行 `update check`，再用候选 ID 执行：
 
@@ -390,9 +389,9 @@ D520 支持通过 `--protocol-override-file PATH` 调整实现明确允许的认
 .\sidraviactl.exe update status
 ```
 
-应用前会再次核对候选、签名和缓存，并请求程序正常退出。请先保存正在编辑的配置。返回 `handed_over` 后，使用 `update status` 查看安装器退出码、系统集成结果及重启要求。安装器沿用原目录与组件，自启和 PATH 按向导确认。应用结果分别报告文件安装、程序恢复及认证状态。请确认程序能够打开和连接校园网。
+应用前请保存正在编辑的配置。校验通过后，程序会协调图形界面和后台退出，由 Qt 维护工具安装同一组件组合的新版。返回 `handed_over` 表示维护工具已接管。安装结束后可用 `update status` 查询结果，并重新打开 Sidravia。
 
-更新中断时，查看操作 ID、阶段及失败码。协调器退出后，可使用 `update recover --operation ID --confirm` 核验状态，或按发行说明重新运行可信安装器。便携用户如遇旧版本留下的启动保护，应将新版完整解包到新目录并迁移需要保留的配置。
+遇到与准备、文件占用或安装相关的失败时，先按 `update status` 的提示重试。如果维护工具缺失或提示需要更换维护工具，请按发行说明使用可信离线安装器。
 
 ## 命令速查
 

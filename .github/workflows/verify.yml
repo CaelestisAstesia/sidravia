@@ -43,18 +43,6 @@ jobs:
           python-version: '3.14.4'
       - name: Run public repository verifier
         run: python tools/developer/verify_repository.py --scope ${{ matrix.scope }} --go go --go-checks native
-      - name: Verify release scheduled-task ownership
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tools/developer/test_release_task_ownership.ps1
-      - name: Verify isolated install and uninstall recovery
-        if: runner.os == 'Windows'
-        shell: powershell
-        run: powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File scripts/tests/integration_failure_test.ps1
-      - name: Verify field validation integration contract
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: pwsh -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File tools/developer/test_field_validation_contract.ps1
 
   cross-compile:
     runs-on: ubuntu-24.04

@@ -2,18 +2,18 @@
 
 本文介绍 Windows 与 Linux 图形界面的安装与首次连接，适用于吉林大学 Dr.Com 5.2.0 D 认证环境。核心包没有图形界面，使用方法见[命令行高级使用](advance.md)。
 
-本页适用于 `0.5.0-alpha.2`。从旧版升级时，请先阅读[发行说明](https://github.com/CaelestisAstesia/sidravia/releases/tag/v0.5.0-alpha.2)。
+本页适用于当前开发版。已发布的旧版请参阅[对应版本的快速开始](https://github.com/CaelestisAstesia/sidravia/blob/v0.5.0-alpha.2/docs/quick-start.md)。
 
 ## 下载与安装
 
-先在[项目首页的下载表](../README.md#选择下载包)确认系统、架构和 GUI／核心包型，再到 [Releases](https://github.com/CaelestisAstesia/sidravia/releases) 下载对应文件。`amd64` 表示 Intel／AMD 的 x86-64；ARM64 当前仅提供核心便携包，尚未经实机验证。
+在目标版本的 [Releases](https://github.com/CaelestisAstesia/sidravia/releases) 资产列表中按系统、架构和组件组合选包。`amd64` 表示 Intel／AMD 的 x86-64；ARM64 请选择名称中含 `arm64` 的制品。
 
-### Windows x64
+### Windows
 
-Windows GUI 需要 [Microsoft Visual C++ x64 运行库](https://aka.ms/vc14/vc_redist.x64.exe)。学校公告还需要系统的 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。
+Windows GUI 需要匹配架构的 Microsoft Visual C++ 运行库，例如 [x64 运行库](https://aka.ms/vc14/vc_redist.x64.exe)。学校公告还需要系统的 [Microsoft Edge WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/)。
 
-- **安装版**（`…-windows-amd64-setup.exe`）：运行安装器，保留「图形界面」组件，按向导完成安装。登录 Windows 后需要自动启动时，勾选「开机自启」并选择「启动图形界面和后台」。需要在任意终端使用命令行工具时勾选「加入用户 PATH」。桌面快捷方式按需创建。取消 GUI 组件即为仅核心安装。
-- **GUI 便携版**（`…-windows-amd64-gui-portable.zip`）：完整解压到固定、可写的目录，运行 `Sidravia.exe`。保留 `sidravia.portable` 及其他随包文件，不要在 ZIP 内运行或只复制 EXE。
+- **安装版**（`…-qt-setup.exe`）：以日常 Windows 账户运行安装器。默认安装 Core 和 GUI，可取消 GUI 只安装 Core。需要自启时可在应用设置中开启。若本机还有旧 Inno 版，先按[迁移说明](guide.md#更新移动与卸载)卸载旧版并保留数据。
+- **GUI 便携版**（`…-windows-<架构>-gui-portable.zip`）：完整解压到固定、可写的目录，运行 `Sidravia.exe`。保留 `sidravia.portable` 及其他随包文件，不要在 ZIP 内运行或只复制 EXE。
 
 安装版将账号配置保存在 `%APPDATA%\Sidravia`，便携版保存在程序目录下的 `config` 文件夹，两者不会自动迁移数据。不要把安装版覆盖到便携目录。完整数据位置见[数据与隐私](privacy.md#数据位置)；从旧版本升级时，请先阅读对应版本的发行说明并备份配置。
 

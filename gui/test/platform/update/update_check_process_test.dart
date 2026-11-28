@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sidravia_gui/platform/integration_failure.dart';
-import 'package:sidravia_gui/platform/update/package_update_checker.dart';
 import 'package:sidravia_gui/platform/update/update_check_process.dart';
 
 void main() {
@@ -83,10 +82,7 @@ esac
         candidateId: '2:22',
         environment: {'DIR': directory.path, 'PATH': '/usr/bin:/bin'},
       );
-      final checked = expectLater(
-        result,
-        completion(UpdateInstallResult.handedOver),
-      );
+      final checked = expectLater(result, completes);
       addTearDown(() async {
         await finish.create();
         await checked;

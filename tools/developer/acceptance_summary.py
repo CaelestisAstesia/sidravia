@@ -39,7 +39,7 @@ def native(path, kind):
                 or not isinstance(report.get('ManifestHash'), str)
                 or not re.fullmatch('[a-fA-F0-9]{64}', report['ManifestHash'])
                 or not isinstance(report.get('Results'), list)):
-            raise ValueError('expected offline_acceptance.ps1 snapshot')
+            raise ValueError('expected archived Windows Inno acceptance snapshot')
         seen = set()
         for row in report['Results']:
             if (not isinstance(row, dict) or not isinstance(row.get('Check'), str)
