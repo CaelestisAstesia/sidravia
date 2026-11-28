@@ -189,18 +189,32 @@ def test_windows_qt_release_lifecycle(qt_release, profile, tmp_path):
         unowned = target / "acceptance-user-file.txt"
         unowned.write_bytes(b"this file is outside the Qt component ownership")
         test_request = tmp_path / "handoff.json"
-        test_request.write_text(json.dumps({
+        handoff = {
             "Installation": str(target), "SourceVersion": source_version, "SourceBuild": source_build,
             "Archive": str(qt_release["repositories"] / asset["name"]), "Cache": str(cabinet),
             "MaintenanceSHA256": image, **qt_release["publisherProof"],
             "Candidate": dict(version=target_version, name=asset["name"], size=asset["size"], sha256=asset["sha256"]),
-        }), encoding="utf-8")
+        }
         env["SIDRAVIA_TEST_QT_HANDOFF"] = str(test_request)
 
         with running_sidravia(target, profile, namespace, env, tmp_path, "before") as (daemon, gui):
             assert (daemon["productVersion"], daemon["buildId"]) == (source_version, source_build)
             code, _ = invoke(tmp_path, "running-uninstall-refused", maint, [*OPTIONS, "purge"], env)
             assert code != 0 and ctl.is_file()
+            if profile == "core":
+                corrupt = tmp_path / asset["name"]
+                shutil.copyfile(handoff["Archive"], corrupt)
+                with corrupt.open("r+b") as archive:
+                    archive.seek(-1, os.SEEK_END)
+                    last = archive.read(1)
+                    archive.seek(-1, os.SEEK_END)
+                    archive.write(bytes([last[0] ^ 1]))
+                test_request.write_text(json.dumps(dict(handoff, Archive=str(corrupt), RejectArchive=True)),
+                                        encoding="utf-8")
+                require_success(invoke(tmp_path, "reject-corrupt-download", qt_release["testProgram"],
+                                       ["-test.run=^TestQtNativeHandoff$", "-test.v"], env))
+                assert list(cabinet.iterdir()) == [], "rejected archive left a maintenance operation in the cache"
+            test_request.write_text(json.dumps(handoff), encoding="utf-8")
             require_success(invoke(tmp_path, "apply", qt_release["testProgram"],
                                    ["-test.run=^TestQtNativeHandoff$", "-test.v"], env))
             if gui is not None:

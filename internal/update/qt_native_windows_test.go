@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -34,6 +35,7 @@ func TestQtNativeHandoff(t *testing.T) {
 		Archive, Cache, MaintenanceSHA256        string
 		PublicKey, Manifest, Signature           []byte
 		Candidate                                release.Candidate
+		RejectArchive                            bool
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -59,7 +61,25 @@ func TestQtNativeHandoff(t *testing.T) {
 	defer cancel()
 	target := layout.Layout{Mode: layout.ModeInstalled, ExecutableDirectory: fixture.Installation}
 	id := daemonctl.Identity{ProductVersion: fixture.SourceVersion, BuildID: fixture.SourceBuild}
+	var beforePID int
+	if fixture.RejectArchive {
+		before, err := daemonctl.Probe(id)
+		if err != nil || before.State != daemonctl.ProbeReachable {
+			t.Fatalf("old daemon must answer before the failed update: state=%v err=%v", before.State, err)
+		}
+		beforePID = before.Info.PID
+	}
 	result, err := applyQt(ctx, fixture.Cache, target, id, fixture.Candidate, proof, fixture.Archive)
+	if fixture.RejectArchive {
+		if result != nil || !errors.Is(err, release.ErrUntrusted) {
+			t.Fatalf("corrupt downloaded repository should be rejected before handoff, got result=%+v err=%v", result, err)
+		}
+		after, err := daemonctl.Probe(id)
+		if err != nil || after.State != daemonctl.ProbeReachable || after.Info.PID != beforePID {
+			t.Fatalf("same old daemon must answer after the failed update: state=%v err=%v", after.State, err)
+		}
+		return
+	}
 	if err != nil {
 		t.Fatal(err)
 	}
